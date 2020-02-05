@@ -1,8 +1,3 @@
-# Ethan Vizitei
-# CS 7720
-
-# Mini Project 1
-# a) Givenafour-classdataset1,
 # compute the mean and covariance for each class
 load data/data_class4.mat
 cls1 = Data{1}
