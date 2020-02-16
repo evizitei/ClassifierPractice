@@ -217,6 +217,7 @@ for i = 1:grid_side_count
   endfor
 endfor
 max_val_surface = max(Z1, Z2);
+mesh_color_surface = (Z1 > Z2) .* linspace(0.5,0.6,grid_side_count)
 
 
 c1_mean_vec = [8; 2];
@@ -236,7 +237,61 @@ y_offset = 0.05;
 c1_z = zeros(1, columns(c1_y)) - y_offset;
 c2_z = zeros(1, columns(c2_y)) - y_offset;
 
-mesh(X, Y, max_val_surface);
+mesh(X, Y, max_val_surface, mesh_color_surface);
+hidden off
+hold on
+point_size = 2;
+scatter3(c1_x, c1_y, c1_z, point_size, 'x');
+scatter3(c2_x, c2_y, c2_z, point_size, 'x');
+hold off
+
+# for question 2 (b), the covariance matrices
+# are the same between classes.  Per Case 2 (2.6.2)
+# this means the discriminant function for each class can
+# be written as:
+#
+# g_i(x) = -(1/2)*(x-mu_i)^T*(sigma_inverse)*(x-mu_i) + ln(P(class_i))
+# working through the derivation to page 40, we get the equation for
+# the decision boundary is w^t(x - x_0) = 0
+#  - to plot this, we need x2 as a function of x1, so we expand and solve for x_2
+#
+# x_2 = (1/w_2)(w^t*x_0)-(w_1/w_2)*x_1
+#
+# these values have big expansions, but much can be precomputed.
+#
+# x_0= (1/2)*(class_1_mean + class_2_mean) -
+#         [(ln(P(w1)/P(w2)))/((c1_mean - c2_mean)^t*sig_inv*(c1_mean-c2_mean)] * (c1_mean - c2_mean)
+#
+# w = sig_inv * (c1_mean - c2_mean)
+
+c1_prior = 0.8
+c2_prior = 0.2
+prior_ratio = log(c1_prior / c2_prior)
+sig_inv = inv(both_covar_mat)
+mean_delta = (c1_mean_vec - c2_mean_vec)
+
+x_0__t1 = (1/2)*(c1_mean_vec + c2_mean_vec)
+x_0__t2 = (prior_ratio/(mean_delta' * sig_inv * mean_delta))*mean_delta
+x_0 = x_0__t1 - x_0__t2
+w = sig_inv * mean_delta
+w_ratio = (w(1)/w(2))
+y_bias = (1/w(2))*(w'*x_0)
+
+boundary_y_from_x = @(x) y_bias - (w_ratio)*x
+
+boundary_x_1_vals = linspace (-10, 15, grid_side_count);
+boundary_x_2_vals = boundary_y_from_x(boundary_x_1_vals);
+boundary_z_vals = zeros(1, columns(boundary_x_2_vals)) - y_offset;
+hold on
+plot3(boundary_x_1_vals, boundary_x_2_vals, boundary_z_vals, '-or');
+hold off
+
+
+c1_posterior = Z1 .* c1_prior;
+c2_posterior = Z2 .* c2_prior;
+posterior_surface = max(c1_posterior, c2_posterior);
+posterior_color_surface = (c1_posterior > c2_posterior) .* linspace(0.5,0.6,grid_side_count);
+mesh(X, Y, posterior_surface, posterior_color_surface);
 hidden off
 hold on
 point_size = 2;
