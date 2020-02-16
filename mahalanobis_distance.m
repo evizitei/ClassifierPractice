@@ -1,18 +1,18 @@
+# defined as sqrt((v1 - v2)^T * SIGMA^-1 * (v1 - v2))
+# if v2 could be the mean of the distribution, or a second
+# sample under the same distribution.
+# Interesting note, euclidean distance is sqrt((v1 - v2)^T * (v1 - v2))
+# which would be mahalanobis with an identity matrix covariance,
+# so euclidean distance is a special case of mahalanobis distance.
 function mahal_dist = compute_mahalanobis_distance(v1, v2, covar_matrix)
-    # defined as sqrt((v1 - v2)^T * SIGMA^-1 * (v1 - v2))
-    # if v2 could be the mean of the distribution, or a second
-    # sample under the same distribution.
-    # Interesting note, euclidean distance is sqrt((v1 - v2)^T * (v1 - v2))
-    # which would be mahalanobis with an identity matrix covariance,
-    # so euclidean distance is a special case of mahalanobis distance.
     vector_delta = (v1 - v2)
     covar_inv = inv(covar_matrix)
     mahal_dist = sqrt((vector_delta') * (covar_inv * vector_delta))
 endfunction
 
+# generic form of discriminant function is:
+# g_i(x) = (-1/2)mahal_dist(x, mean, covar) - (d/2)*ln(2*pi) - (1/2)*ln(det(covar)) + ln(Prior)
 function discriminant_val = discriminant_function(observation, mean_vec, covar_matrix, prior)
-    # generic form of discriminant function is:
-    # g_i(x) = (-1/2)mahal_dist(x, mean, covar) - (d/2)*ln(2*pi) - (1/2)*ln(det(covar)) + ln(Prior)
     dimensionality = size(observation)(1)
     mahal_d = compute_mahalanobis_distance(observation, mean_vec, covar_matrix)
     t1 = (-1/2)*mahal_d
@@ -115,3 +115,131 @@ test_point = class_2_mean
 g_1_t = discriminant_function(test_point, class_1_mean, cv_1, class_1_prior)
 g_2_t = discriminant_function(test_point, class_2_mean, cv_2, class_2_prior)
 g_3_t = discriminant_function(test_point, class_3_mean, cv_3, class_3_prior)
+
+
+function eigencells = compute_eigendecomposition (covar_matrix)
+  a = covar_matrix(1,1)
+  b = covar_matrix(1,2)
+  c = covar_matrix(2,1)
+  d = covar_matrix(2,2)
+  qa = 1
+  qb = (a+d) * -1
+  qc = (a*d) - (b*c)
+  qsqrt = sqrt((qb*qb) - (4*qa*qc))
+  eigenval_1 = ((qb*-1) + qsqrt) / (2*qa)
+  eigenval_2 = ((qb*-1) - qsqrt) / (2*qa)
+  characteristic_1 = covar_matrix - (eigenval_1 * eye(2))
+  characteristic_2 = covar_matrix - (eigenval_2 * eye(2))
+  vec_1_2 = (-1*characteristic_1(1,1)) / characteristic_1(1,2)
+  vec_2_2 = (-1*characteristic_2(1,1)) / characteristic_2(1,2)
+  vec_1 = [1; vec_1_2]
+  vec_2 = [1; vec_2_2]
+  e_vec_1 = vec_1 / sqrt(dot(vec_1, vec_1))
+  e_vec_2 = vec_2 / sqrt(dot(vec_2, vec_2))
+  eigencells = { e_vec_1, e_vec_2, eigenval_1, eigenval_2 }
+endfunction
+
+
+# this first makes a set of samples from a standard normal distribution
+# (centered at 0, covariance of Identity matrix)
+# to make this work for the specified distribution
+# we need to de-whitening-transform each point to match the
+# provided covariance matrix and then shift it to the right centrality
+# by adding the mean.
+#
+# The whitening transform is defined as:
+# OrthonormalEigenvectors * diagonal_eigenvalues^-1/2
+# intuitively, this maps a given point onto a spherical normal distribution.
+# Therefore the inverse of this matrix would transform points from a spherical
+# normal distribution to a specified covariance matrix.
+#
+# Acutally, the covariance matrix in this exercise is diagonal,
+# so the eigenvectors are just the standard basis vectos
+# and the eigenvalues are the diagonal values.
+function output_dataset = generate_normal_sample (mean_vec, covar_mat, smpl_count)
+  dim = rows(mean_vec)
+  init_sample = randn(dim, smpl_count)
+  ev1 = [1; 0]
+  ev2 = [0; 1]
+  diag_evals = [(1 / sqrt(covar_mat(1,1))), 0; 0, (1 / sqrt(covar_mat(2,2)))]
+  evecs = [ev1, ev2]
+  whitening_transform = evecs * diag_evals
+  inv_whit_transform = inv(whitening_transform)
+  skewed_data = inv_whit_transform * init_sample
+  shifted_sample = skewed_data + mean_vec
+  output_dataset = shifted_sample
+endfunction
+
+# 3D plotting requires having some value for "height", the probability of the
+# given point seems appropriate.
+# P(x| mu, sigma) =
+#  1/{[(2*pi)^(d/2)]*sqrt(det(sigma))} * e^[(-1/2)*(x-mu)^t*inv(sigma)*(x-mu)]
+
+function pw1 = class_1_likelihood (x, y)
+  mean_vec = [8; 2];
+  covar_mat = [4.1, 0; 0, 2.8];
+  m_delt = ([x; y] - mean_vec);
+  covar_det = det(covar_mat);
+  covar_inv = inv(covar_mat);
+  t1 = (1 / ((2*pi)* sqrt(covar_det)));
+  t2 = exp((-1/2)*(m_delt' * covar_inv * m_delt));
+  pw1 = t1 * t2;
+endfunction
+
+function pw2 = class_2_likelihood (x, y)
+  mean_vec = [2; 8];
+  covar_mat = [4.1, 0; 0, 2.8];
+  m_delt = ([x; y] - mean_vec);
+  covar_det = det(covar_mat);
+  covar_inv = inv(covar_mat);
+  t1 = (1 / ((2*pi)* sqrt(covar_det)));
+  t2 = exp((-1/2)*(m_delt' * covar_inv * m_delt));
+  pw2 = t1 * t2;
+endfunction
+
+grid_side_count = 100;
+point_range = linspace (-5, 12, grid_side_count);
+[X, Y] = meshgrid (point_range, point_range);
+#Z = arrayfun(class_1_likelihood, X, Y);
+#surf (X, Y, Z);
+# TODO: figure out how to vectorize this
+Z1 = zeros(grid_side_count, grid_side_count);
+for i = 1:grid_side_count
+  for j = 1:grid_side_count
+    Z1(i,j) = class_1_likelihood(X(i,j), Y(i,j));
+  endfor
+endfor
+
+Z2 = zeros(grid_side_count, grid_side_count);
+for i = 1:grid_side_count
+  for j = 1:grid_side_count
+    Z2(i,j) = class_2_likelihood(X(i,j), Y(i,j));
+  endfor
+endfor
+max_val_surface = max(Z1, Z2);
+
+
+c1_mean_vec = [8; 2];
+c2_mean_vec = [2; 8];
+both_covar_mat = [4.1, 0; 0, 2.8];
+
+data_sample_1 = generate_normal_sample(c1_mean_vec, both_covar_mat, 1000);
+c1_x = data_sample_1(1, :);
+c1_y = data_sample_1(2, :);
+
+
+data_sample_2 = generate_normal_sample(c2_mean_vec, both_covar_mat, 1000);
+c2_x = data_sample_2(1, :);
+c2_y = data_sample_2(2, :);
+
+y_offset = 0.05;
+c1_z = zeros(1, columns(c1_y)) - y_offset;
+c2_z = zeros(1, columns(c2_y)) - y_offset;
+
+mesh(X, Y, max_val_surface);
+hidden off
+hold on
+point_size = 2;
+scatter3(c1_x, c1_y, c1_z, point_size, 'x');
+scatter3(c2_x, c2_y, c2_z, point_size, 'x');
+hold off
